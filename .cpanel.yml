@@ -1,0 +1,46 @@
+---
+deployment:
+  tasks:
+    # Docroot for onebase.nexabie.co.tz on this cPanel account
+    - export DEPLOYPATH=/home/nexabiec/onebase.nexabie.co.tz/
+    - /bin/mkdir -p $DEPLOYPATH
+
+    # Top-level application files (listed explicitly — no wildcards, so
+    # .git/.cpanel.yml/router.php never get deployed by accident)
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/.htaccess $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/add_customer.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/branches.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/check_stock.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/config.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/currency_settings.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/customers.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/dashboard.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/get_branch_products.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/get_product_stock.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/index.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/install.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/login.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/logout.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/purchase_orders.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/reports.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/returns.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/sales.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/settings.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/stock.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/stock_import.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/suppliers.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/users.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/zones.php $DEPLOYPATH
+
+    # Role directories & shared includes (recursive)
+    - /bin/cp -Rf /home/nexabiec/repositories/Onebase/branch_manager $DEPLOYPATH
+    - /bin/cp -Rf /home/nexabiec/repositories/Onebase/cashier $DEPLOYPATH
+    - /bin/cp -Rf /home/nexabiec/repositories/Onebase/includes $DEPLOYPATH
+    - /bin/cp -Rf /home/nexabiec/repositories/Onebase/stock_controller $DEPLOYPATH
+    - /bin/cp -Rf /home/nexabiec/repositories/Onebase/super_admin $DEPLOYPATH
+    - /bin/cp -Rf /home/nexabiec/repositories/Onebase/uploads $DEPLOYPATH
+    - /bin/cp -Rf /home/nexabiec/repositories/Onebase/zone_manager $DEPLOYPATH
+
+    # Normalize permissions after copy
+    - /bin/find $DEPLOYPATH -type d -exec /bin/chmod 755 {} \;
+    - /bin/find $DEPLOYPATH -type f -exec /bin/chmod 644 {} \;
