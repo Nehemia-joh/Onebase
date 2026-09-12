@@ -4,72 +4,162 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1e3c72">
 <title><?= e($pageTitle ?? 'Dashboard') ?> &mdash; <?= e(getSetting('business_name', 'OneSystem BMS')) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
+:root {
+  --primary-color:   #007bff;
+  --secondary-color: #6c757d;
+  --success-color:   #28a745;
+  --danger-color:    #dc3545;
+  --warning-color:   #ffc107;
+  --info-color:      #17a2b8;
+  --light-color:     #f8f9fa;
+  --dark-color:      #343a40;
+
+  --text-primary:  #212529;
+  --bg-primary:    #f8f9fa;
+  --bg-secondary:  #e9ecef;
+  --navbar-bg:      linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e8ba3 100%);
+  --dropdown-bg:    linear-gradient(135deg, #2a5298 0%, #7e8ba3 100%);
+  --card-bg:       #ffffff;
+  --hover-bg:      #f1f3f5;
+  --border-color:  #dee2e6;
+
+  --border-radius: 0.375rem;
+  --box-shadow:    0 0.125rem 0.25rem rgba(0,0,0,0.075);
+  --transition:    all 0.15s ease-in-out;
+}
+
 [x-cloak]{display:none!important}
 
-/* Sidebar */
-.sidebar { background: linear-gradient(180deg,#0f172a 0%,#1a1040 60%,#0f172a 100%); }
-.nav-group-label { font-size:.65rem; font-weight:700; letter-spacing:.1em; color:#475569; text-transform:uppercase; padding:.5rem .75rem .25rem; display:block; }
+body {
+  font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size:14px;
+  color:var(--text-primary);
+  background:var(--bg-primary);
+}
+
+/* Sidebar (this app's "navbar" — brand surface) */
+.sidebar { background:var(--navbar-bg); }
+.nav-group-label { font-size:.65rem; font-weight:700; letter-spacing:.1em; color:rgba(255,255,255,.55); text-transform:uppercase; padding:.5rem .75rem .25rem; display:block; }
 .nav-item {
   display:flex; align-items:center; gap:.75rem;
-  padding:.6rem .75rem; border-radius:.75rem;
-  font-size:.875rem; font-weight:500; color:#94a3b8;
-  transition:all .15s ease; cursor:pointer; text-decoration:none;
+  padding:.6rem .75rem; border-radius:var(--border-radius);
+  font-size:.875rem; font-weight:500; color:rgba(255,255,255,.85);
+  transition:var(--transition); cursor:pointer; text-decoration:none;
 }
-.nav-item:hover { background:rgba(255,255,255,.07); color:#e2e8f0; }
-.nav-item.active { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; box-shadow:0 4px 15px rgba(79,70,229,.4); }
-.nav-item.active .icon-badge { background:rgba(255,255,255,.2)!important; color:#fff!important; }
+.nav-item:hover { background:rgba(255,255,255,.15); color:#fff; }
+.nav-item.active { background:rgba(255,255,255,.2); color:#fff; font-weight:600; box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+.nav-item.active .icon-badge { background:rgba(255,255,255,.25)!important; color:#fff!important; }
 .icon-badge {
-  width:2rem; height:2rem; border-radius:.5rem; flex-shrink:0;
-  display:flex; align-items:center; justify-content:center; font-size:.75rem; transition:all .15s;
+  width:2rem; height:2rem; border-radius:var(--border-radius); flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:.75rem; transition:var(--transition);
 }
+
+/* Dropdown menus (notifications / user menu) — same blue gradient as the sidebar */
+.dropdown-panel { background:var(--dropdown-bg); color:#fff; }
+.dropdown-panel .dropdown-item { color:#fff; }
+.dropdown-panel .dropdown-item:hover { background:rgba(255,255,255,.15); }
 
 /* Cards */
 .stat-card { border-radius:1rem; padding:1.25rem; position:relative; overflow:hidden; }
 .stat-card .card-orb-1 { position:absolute; width:6rem; height:6rem; border-radius:50%; right:-1.25rem; bottom:-1.25rem; background:rgba(255,255,255,.12); }
 .stat-card .card-orb-2 { position:absolute; width:9rem; height:9rem; border-radius:50%; right:-2.5rem; bottom:-2.5rem; background:rgba(255,255,255,.06); }
 
+.dashboard-card {
+  background:var(--card-bg); border-radius:var(--border-radius); box-shadow:var(--box-shadow);
+  border:1px solid var(--border-color); border-left:4px solid var(--secondary-color);
+  padding:1.25rem; transition:var(--transition);
+}
+.dashboard-card:hover { box-shadow:0 0.5rem 1rem rgba(0,0,0,.1); }
+.dashboard-card.success { border-left-color:var(--success-color); }
+.dashboard-card.warning { border-left-color:var(--warning-color); }
+.dashboard-card.danger  { border-left-color:var(--danger-color); }
+.dashboard-card.info    { border-left-color:var(--info-color); }
+
 /* Form helpers */
-.form-input { width:100%; border:1.5px solid #e2e8f0; border-radius:.625rem; padding:.5rem .75rem; font-size:.875rem; outline:none; transition:border-color .15s,box-shadow .15s; background:#fff; }
-.form-input:focus { border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.15); }
-.form-label { display:block; font-size:.8125rem; font-weight:600; color:#374151; margin-bottom:.35rem; }
-.table-th { padding:.75rem 1rem; text-align:left; font-size:.7rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:.06em; background:#f9fafb; }
-.table-td { padding:.75rem 1rem; font-size:.875rem; color:#374151; }
+.form-input { width:100%; border:1.5px solid var(--border-color); border-radius:var(--border-radius); padding:.5rem .75rem; font-size:.875rem; outline:none; transition:var(--transition); background:#fff; }
+.form-input:focus { border-color:var(--primary-color); box-shadow:0 0 0 3px rgba(0,123,255,.15); }
+.form-label { display:block; font-size:.8125rem; font-weight:600; color:var(--text-primary); margin-bottom:.35rem; }
+.table-th { padding:.75rem 1rem; text-align:left; font-size:.7rem; font-weight:700; color:var(--secondary-color); text-transform:uppercase; letter-spacing:.06em; background:var(--bg-secondary); }
+.table-td { padding:.75rem 1rem; font-size:.875rem; color:var(--text-primary); }
 .badge { display:inline-flex; align-items:center; padding:.2rem .65rem; border-radius:9999px; font-size:.7rem; font-weight:600; }
 
+/* Status dots */
+.status-dot { display:inline-block; width:.5rem; height:.5rem; border-radius:50%; }
+.status-dot.online  { background:var(--success-color); }
+.status-dot.offline { background:var(--danger-color); }
+.status-dot.warning  { background:var(--warning-color); }
+
 /* Buttons */
-.btn-primary { display:inline-flex; align-items:center; gap:.4rem; background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; padding:.5rem 1rem; border-radius:.625rem; font-size:.875rem; font-weight:600; border:none; cursor:pointer; transition:all .15s; box-shadow:0 2px 8px rgba(79,70,229,.3); }
-.btn-primary:hover { filter:brightness(1.1); box-shadow:0 4px 12px rgba(79,70,229,.4); transform:translateY(-1px); }
-.btn-secondary { display:inline-flex; align-items:center; gap:.4rem; background:#fff; color:#374151; border:1.5px solid #e2e8f0; padding:.5rem 1rem; border-radius:.625rem; font-size:.875rem; font-weight:600; cursor:pointer; transition:all .15s; }
-.btn-secondary:hover { background:#f9fafb; border-color:#d1d5db; transform:translateY(-1px); }
-.btn-danger { display:inline-flex; align-items:center; gap:.4rem; background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; padding:.5rem 1rem; border-radius:.625rem; font-size:.875rem; font-weight:600; border:none; cursor:pointer; transition:all .15s; box-shadow:0 2px 8px rgba(239,68,68,.25); }
+.btn-primary { display:inline-flex; align-items:center; gap:.4rem; background:var(--primary-color); color:#fff; padding:.5rem 1rem; border-radius:var(--border-radius); font-size:.875rem; font-weight:500; border:none; cursor:pointer; transition:var(--transition); box-shadow:var(--box-shadow); }
+.btn-primary:hover { filter:brightness(1.1); box-shadow:0 4px 12px rgba(0,123,255,.35); transform:translateY(-1px); }
+.btn-secondary { display:inline-flex; align-items:center; gap:.4rem; background:#fff; color:var(--secondary-color); border:1.5px solid var(--border-color); padding:.5rem 1rem; border-radius:var(--border-radius); font-size:.875rem; font-weight:500; cursor:pointer; transition:var(--transition); }
+.btn-secondary:hover { background:var(--hover-bg); border-color:#c8ccd0; transform:translateY(-1px); }
+.btn-danger { display:inline-flex; align-items:center; gap:.4rem; background:var(--danger-color); color:#fff; padding:.5rem 1rem; border-radius:var(--border-radius); font-size:.875rem; font-weight:500; border:none; cursor:pointer; transition:var(--transition); box-shadow:var(--box-shadow); }
 .btn-danger:hover { filter:brightness(1.1); transform:translateY(-1px); }
-.btn-success { display:inline-flex; align-items:center; gap:.4rem; background:linear-gradient(135deg,#10b981,#059669); color:#fff; padding:.5rem 1rem; border-radius:.625rem; font-size:.875rem; font-weight:600; border:none; cursor:pointer; transition:all .15s; box-shadow:0 2px 8px rgba(16,185,129,.25); }
+.btn-success { display:inline-flex; align-items:center; gap:.4rem; background:var(--success-color); color:#fff; padding:.5rem 1rem; border-radius:var(--border-radius); font-size:.875rem; font-weight:500; border:none; cursor:pointer; transition:var(--transition); box-shadow:var(--box-shadow); }
 .btn-success:hover { filter:brightness(1.1); transform:translateY(-1px); }
 
 /* Page card */
-.page-card { background:#fff; border-radius:1rem; box-shadow:0 1px 4px rgba(0,0,0,.06); border:1px solid #f1f5f9; }
+.page-card { background:var(--card-bg); border-radius:var(--border-radius); box-shadow:var(--box-shadow); border:1px solid var(--border-color); transition:var(--transition); }
+.page-card:hover { box-shadow:0 0.5rem 1rem rgba(0,0,0,.1); }
 
-/* Scrollbar */
-::-webkit-scrollbar { width:5px; height:5px; }
+/* Scrollbar — thin, gray thumb, rounded */
+::-webkit-scrollbar { width:8px; height:8px; }
 ::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:#334155; border-radius:9999px; }
+::-webkit-scrollbar-thumb { background:#adb5bd; border-radius:9999px; }
+.sidebar ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.3); }
+
+/* Utility animations */
+@keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+@keyframes slideUp { from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)} }
+@keyframes spin    { to{transform:rotate(360deg)} }
+.fade-in  { animation:fadeIn .3s ease-in-out; }
+.slide-up { animation:slideUp .3s ease-in-out; }
+.spinner  { width:2rem; height:2rem; border:3px solid rgba(0,123,255,.2); border-top-color:var(--primary-color); border-radius:50%; animation:spin .7s linear infinite; display:inline-block; }
 
 /* Type-to-search dropdowns */
 .searchable-list { position:absolute; z-index:70; left:0; right:0; top:100%; margin-top:.25rem;
-  background:#fff; border:1px solid #e2e8f0; border-radius:.75rem;
+  background:#fff; border:1px solid var(--border-color); border-radius:var(--border-radius);
   box-shadow:0 10px 30px rgba(0,0,0,.15); max-height:15rem; overflow-y:auto; }
 .searchable-item { padding:.5rem .75rem; font-size:.875rem; cursor:pointer; }
-.searchable-item:hover, .searchable-item.active { background:#eef2ff; }
-.searchable-empty { padding:.75rem; font-size:.8rem; color:#94a3b8; text-align:center; }
+.searchable-item:hover, .searchable-item.active { background:var(--hover-bg); }
+.searchable-empty { padding:.75rem; font-size:.8rem; color:var(--secondary-color); text-align:center; }
+
+/* ── Responsive / touch ─────────────────────────────────────────────── */
+@media (hover:none) and (pointer:coarse) {
+  .nav-item, .btn-primary, .btn-secondary, .btn-danger, .btn-success { min-height:44px; }
+}
+@media (max-width:768px) {
+  input, select, textarea, .form-input { font-size:16px; } /* prevents iOS auto-zoom on focus */
+}
+@supports (-webkit-touch-callout:none) {
+  .flex.h-screen { min-height:-webkit-fill-available; }
+}
+
+/* ── Mobile-only dark mode (matches system preference on small screens) ── */
+@media (max-width:768px) and (prefers-color-scheme:dark) {
+  .page-card, main .bg-white { background:#2d3748 !important; border-color:#4a5568 !important; color:#e2e8f0; }
+  .table-th { background:#1f2937; color:#cbd5e1; }
+  .table-td { color:#e2e8f0; }
+}
+
+/* ── Print ──────────────────────────────────────────────────────────── */
+@media print {
+  .sidebar, header, .no-print { display:none !important; }
+  body { background:#fff; font-size:12px; }
+  table, th, td { border:1px solid #000; border-collapse:collapse; }
+  .page-card, .shadow-sm, .shadow-xl { box-shadow:none !important; border:1px solid #000; }
+}
 </style>
 </head>
-<body class="bg-slate-100 font-sans antialiased" x-data="{ sidebarOpen: true }">
+<body class="antialiased" x-data="{ sidebarOpen: true }">
 
 <?php $u = currentUser(); $cp = basename($_SERVER['PHP_SELF']); ?>
 
@@ -87,13 +177,13 @@
     <img src="<?= e($bizLogo) ?>" alt="Logo" class="flex-shrink-0 w-10 h-10 rounded-xl object-cover bg-white">
     <?php else: ?>
     <div class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-         style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
+         style="background:linear-gradient(135deg,#007bff,#2a5298)">
       <i class="fas fa-layer-group text-white text-sm"></i>
     </div>
     <?php endif; ?>
     <div x-show="sidebarOpen" x-cloak>
       <div class="font-bold text-white text-base leading-tight"><?= e(getSetting('business_name', 'OneSystem')) ?></div>
-      <div class="text-[.65rem] text-indigo-400 font-medium">Business Management</div>
+      <div class="text-[.65rem] text-blue-500 font-medium">Business Management</div>
     </div>
   </div>
 
@@ -207,7 +297,7 @@
   <div class="px-2.5 py-3 border-t border-white/[.07]">
     <div class="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors">
       <div class="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm text-white"
-           style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
+           style="background:linear-gradient(135deg,#007bff,#2a5298)">
         <?= strtoupper(substr($u['name'],0,2)) ?>
       </div>
       <div x-show="sidebarOpen" x-cloak class="flex-1 min-w-0">
@@ -250,7 +340,7 @@
     <div class="flex items-center gap-2">
       <!-- Date chip -->
       <div class="hidden md:flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5 text-xs text-slate-500">
-        <i class="fas fa-calendar-alt text-indigo-400"></i>
+        <i class="fas fa-calendar-alt text-blue-500"></i>
         <?= date('D, d M Y') ?>
       </div>
 
@@ -284,15 +374,15 @@
           <?php endif; ?>
         </button>
         <div x-show="bellOpen" @click.away="bellOpen=false" x-cloak x-transition
-             class="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50"
-             style="box-shadow:0 8px 30px rgba(0,0,0,.12)">
-          <div class="px-4 py-2 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase">Notifications</div>
+             class="dropdown-panel absolute right-0 mt-2 w-72 rounded-2xl shadow-xl py-2 z-50"
+             style="box-shadow:0 8px 30px rgba(0,0,0,.25)">
+          <div class="px-4 py-2 border-b border-white/20 text-xs font-bold text-white/70 uppercase">Notifications</div>
           <?php if (!$notifs): ?>
-          <div class="px-4 py-6 text-center text-slate-400 text-sm"><i class="fas fa-check-circle text-emerald-400 text-xl block mb-2"></i>All caught up!</div>
+          <div class="px-4 py-6 text-center text-white/70 text-sm"><i class="fas fa-check-circle text-emerald-300 text-xl block mb-2"></i>All caught up!</div>
           <?php else: foreach ($notifs as $n): ?>
-          <a href="<?= $n['href'] ?>" class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
+          <a href="<?= $n['href'] ?>" class="dropdown-item flex items-center gap-3 px-4 py-2.5 transition-colors">
             <span class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 <?= $n['color'] ?>"><i class="fas <?= $n['icon'] ?> text-xs"></i></span>
-            <span class="text-sm text-slate-700"><?= e($n['label']) ?></span>
+            <span class="text-sm"><?= e($n['label']) ?></span>
           </a>
           <?php endforeach; endif; ?>
         </div>
@@ -306,7 +396,7 @@
         <button @click="open=!open"
           class="flex items-center gap-2.5 pl-1 pr-3 py-1.5 rounded-xl hover:bg-slate-100 transition-colors text-sm">
           <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-xs"
-               style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
+               style="background:linear-gradient(135deg,#007bff,#2a5298)">
             <?= strtoupper(substr($u['name'],0,2)) ?>
           </div>
           <div class="hidden sm:block text-left">
@@ -317,15 +407,15 @@
         </button>
 
         <div x-show="open" @click.away="open=false" x-cloak x-transition
-          class="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50"
-          style="box-shadow:0 8px 30px rgba(0,0,0,.12)">
-          <div class="px-4 py-2.5 border-b border-slate-100">
-            <p class="text-sm font-semibold text-slate-800"><?= e($u['name']) ?></p>
-            <p class="text-xs text-slate-400"><?= e($u['username']) ?></p>
+          class="dropdown-panel absolute right-0 mt-2 w-52 rounded-2xl shadow-xl py-2 z-50"
+          style="box-shadow:0 8px 30px rgba(0,0,0,.25)">
+          <div class="px-4 py-2.5 border-b border-white/20">
+            <p class="text-sm font-semibold text-white"><?= e($u['name']) ?></p>
+            <p class="text-xs text-white/70"><?= e($u['username']) ?></p>
           </div>
           <div class="py-1.5 px-2">
             <a href="/logout" onclick="return confirm('Sign out?')"
-               class="flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-xl transition-colors">
+               class="dropdown-item flex items-center gap-2.5 px-3 py-2 text-sm rounded-xl transition-colors">
               <i class="fas fa-sign-out-alt text-xs"></i> Sign Out
             </a>
           </div>

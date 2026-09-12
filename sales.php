@@ -728,7 +728,13 @@ function saleForm() {
     pushProduct(prod) {
       if (parseInt(prod.qty) <= 0) { Toast.fire({icon:'error', title:prod.name + ' is out of stock'}); return false; }
       const existing = this.items.find(i => i.id == prod.id);
-      if (existing) { existing.qty++; this.calcLine(this.items.indexOf(existing)); return true; }
+      if (existing) {
+        if (existing.qty + 1 > existing.stock) {
+          Toast.fire({icon:'warning', title:'Only ' + existing.stock + ' of ' + existing.name + ' available'});
+          return false;
+        }
+        existing.qty++; this.calcLine(this.items.indexOf(existing)); return true;
+      }
       const priceType = this.customerType;
       const unitPrice = priceType === 'wholesale' ? parseFloat(prod.wholesale_price) : parseFloat(prod.retail_price);
       this.items.push({
@@ -748,6 +754,12 @@ function saleForm() {
 
     calcLine(idx) {
       const item = this.items[idx];
+      if (item.qty > item.stock) {
+        Toast.fire({icon:'warning', title:'Only ' + item.stock + ' of ' + item.name + ' available'});
+        item.qty = item.stock;
+      } else if (item.qty < 1 || !item.qty) {
+        item.qty = 1;
+      }
       item.total = item.qty * item.unitPrice;
       this.calcTotals();
     },
@@ -781,6 +793,11 @@ function saleForm() {
 
     submitSale() {
       if (this.items.length === 0) { Toast.fire({icon:'warning',title:'Add at least one item'}); return; }
+      const overStock = this.items.find(i => i.qty > i.stock);
+      if (overStock) {
+        Toast.fire({icon:'error', title:'Only ' + overStock.stock + ' of ' + overStock.name + ' available — reduce the quantity'});
+        return;
+      }
       this.$el.submit();
     },
 

@@ -141,6 +141,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ' . url('stock')); exit;
     }
 
+    // Add stock to several selected products at once, all at one branch.
+    // Additive — a product's new total is its current quantity plus the
+    // number entered here, same semantics as the single "Add Stock" action.
+    if ($act === 'bulk_add_stock') {
+        $bid  = cleanInt($_POST['branch_id'] ?? 0);
+        $qtys = $_POST['qty'] ?? [];
+
+        if (!$bid || !is_array($qtys)) {
+            flash('error', 'Please choose a branch.');
+            header('Location: ' . url('stock')); exit;
+        }
+
+        $updated = 0;
+        foreach ($qtys as $rawPid => $rawQty) {
+            $pid = (int)$rawPid;
+            $qty = cleanInt($rawQty);
+            if (!$pid || $qty <= 0) continue;
+
+            $existing = $db->prepare('SELECT quantity FROM stock WHERE product_id=? AND branch_id=?');
+            $existing->execute([$pid, $bid]);
+            $before = (int)($existing->fetchColumn() ?: 0);
+            $after  = $before + $qty;
+
+            $db->prepare('INSERT INTO stock (product_id,branch_id,quantity) VALUES (?,?,?) ON DUPLICATE KEY UPDATE quantity=quantity+?')
+                ->execute([$pid, $bid, $qty, $qty]);
+            $db->prepare(
+                "INSERT INTO stock_adjustments (product_id,branch_id,adjustment_type,quantity_before,quantity_changed,quantity_after,reason,user_id)
+                 VALUES (?,?,'add',?,?,?,'Bulk quantity update',?)"
+            )->execute([$pid, $bid, $before, $qty, $after, $u['id']]);
+            $updated++;
+        }
+
+        if ($updated) logActivity('stock_bulk_added', "Bulk-added stock to $updated product(s) at branch $bid");
+        flash($updated ? 'success' : 'error', $updated ? "Stock updated for $updated product(s)." : 'No quantities entered.');
+        header('Location: ' . url('stock')); exit;
+    }
+
     // Adjust stock
     if ($act === 'adjust_stock') {
         $pid    = cleanInt($_POST['product_id'] ?? 0);
@@ -537,7 +574,8 @@ include __DIR__ . '/includes/tailwind.php';
   </form>
   <div data-bulk-bar class="hidden items-center gap-3 mx-4 mt-4 px-4 py-2.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700">
     <span><span data-selected-count>0</span> selected</span>
-    <button type="button" onclick="confirmBulkDelete('bulkDeleteForm','product')" class="btn-danger ml-auto"><i class="fas fa-trash-alt"></i> Delete Selected</button>
+    <button type="button" onclick="openBulkQtyModal()" class="btn-secondary ml-auto"><i class="fas fa-boxes"></i> Update Quantities</button>
+    <button type="button" onclick="confirmBulkDelete('bulkDeleteForm','product')" class="btn-danger"><i class="fas fa-trash-alt"></i> Delete Selected</button>
   </div>
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
@@ -564,7 +602,7 @@ include __DIR__ . '/includes/tailwind.php';
         <?php $isLow = $item['quantity'] !== null && $item['quantity'] <= $item['min_stock_alert']; ?>
         <?php $looksOff = (float)$item['retail_price'] === 0.0 && (int)$item['min_stock_alert'] > 999; ?>
         <tr class="hover:bg-gray-50 transition-colors <?= $isLow ? 'bg-red-50' : '' ?>">
-          <td class="table-td"><input type="checkbox" name="ids[]" value="<?= $item['id'] ?>" form="bulkDeleteForm" data-row-check></td>
+          <td class="table-td"><input type="checkbox" name="ids[]" value="<?= $item['id'] ?>" form="bulkDeleteForm" data-row-check data-product-name="<?= e($item['name']) ?>"></td>
           <td class="table-td font-mono text-xs text-gray-500"><?= e($item['sku']) ?></td>
           <td class="table-td">
             <div class="font-medium text-gray-800">
@@ -613,6 +651,35 @@ include __DIR__ . '/includes/tailwind.php';
         <?php endforeach; ?>
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- ── Bulk Update Quantities Modal ── -->
+<div id="bulkQtyModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <h3 class="font-semibold text-gray-800">Update Quantities</h3>
+      <button type="button" onclick="document.getElementById('bulkQtyModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+    </div>
+    <form method="POST" id="bulkQtyFormEl" class="p-5 space-y-4 overflow-y-auto">
+      <?= csrf_field() ?>
+      <input type="hidden" name="_act" value="bulk_add_stock">
+      <div>
+        <label class="form-label">Branch <span class="text-red-500">*</span></label>
+        <select name="branch_id" required class="form-input">
+          <option value="">-- Select Branch --</option>
+          <?php foreach ($branches as $b): ?>
+          <option value="<?= $b['id'] ?>"><?= e($b['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <p class="text-xs text-gray-400">Enter how much to <strong>add</strong> to each product's current stock at that branch. Leave blank to skip a product.</p>
+      <div id="bulkQtyRows" class="divide-y divide-gray-50"></div>
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="btn-primary flex-1"><i class="fas fa-boxes"></i> Update Quantities</button>
+        <button type="button" onclick="document.getElementById('bulkQtyModal').classList.add('hidden')" class="btn-secondary">Cancel</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -730,6 +797,42 @@ include __DIR__ . '/includes/tailwind.php';
 <?php endif; ?>
 
 <script>
+function openBulkQtyModal() {
+  const boxes = [...document.querySelectorAll('[data-row-check]:checked')];
+  if (!boxes.length) return;
+
+  const seen = new Set();
+  const rows = document.getElementById('bulkQtyRows');
+  rows.innerHTML = '';
+
+  boxes.forEach(function (b) {
+    const pid = b.value;
+    if (seen.has(pid)) return;
+    seen.add(pid);
+
+    const name = b.dataset.productName || ('#' + pid);
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between gap-3 py-2';
+
+    const label = document.createElement('span');
+    label.className = 'text-sm text-gray-700 flex-1 pr-3';
+    label.textContent = name;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.name = 'qty[' + pid + ']';
+    input.min = '0';
+    input.placeholder = '0';
+    input.className = 'form-input w-24 text-right';
+
+    row.appendChild(label);
+    row.appendChild(input);
+    rows.appendChild(row);
+  });
+
+  document.getElementById('bulkQtyModal').classList.remove('hidden');
+}
+
 function openAdjust(productId, productName, branchId, currentQty) {
   document.getElementById('adjustProductId').value = productId;
   document.getElementById('adjustBranchId').value  = branchId;
