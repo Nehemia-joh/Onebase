@@ -17,6 +17,7 @@ deployment:
     - /bin/cp -f /home/nexabiec/repositories/Onebase/currency_settings.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/customers.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/dashboard.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/database_reset.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/get_branch_products.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/get_product_stock.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/index.php $DEPLOYPATH
