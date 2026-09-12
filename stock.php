@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/currency_functions.php';
+require_once __DIR__ . '/includes/product_columns.php';
 requireRole('super_admin','zone_manager','branch_manager','stock_controller');
 // Role directories are the canonical URLs — forward direct hits there
 if (!defined('ENTRY_OK') && isLoggedIn()) {
@@ -11,12 +12,14 @@ if (!defined('ENTRY_OK') && isLoggedIn()) {
 }
 
 $db        = getDB();
+ensureProductColumns($db);
 $pageTitle = 'Stock Management';
 $action    = clean($_GET['action'] ?? 'list');
 $tab       = clean($_GET['tab'] ?? 'inventory');
 $editId    = cleanInt($_GET['id'] ?? 0);
 $filterBranch = cleanInt($_GET['branch_id'] ?? 0);
 $filterLow    = ($_GET['filter'] ?? '') === 'low';
+$filterIssues = !empty($_GET['data_issues']);
 
 $branches = $db->query('SELECT id, name FROM branches WHERE is_active = 1 ORDER BY name')->fetchAll();
 $zones    = $db->query('SELECT id, name FROM zones ORDER BY name')->fetchAll();
@@ -38,10 +41,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sku        = clean($_POST['sku'] ?? '') ?: generateSku();
         $barcode    = clean($_POST['barcode'] ?? '');
         $desc       = clean($_POST['description'] ?? '');
+        $category   = clean($_POST['category'] ?? '') ?: null;
+        $unit       = clean($_POST['unit'] ?? '') ?: null;
         $costPrice  = cleanFloat($_POST['cost_price'] ?? 0);
         $wholeSale  = cleanFloat($_POST['wholesale_price'] ?? 0);
+        $ws1Unit    = clean($_POST['ws1_unit'] ?? '') ?: null;
+        $ws2Price   = ($_POST['ws2_price'] ?? '') !== '' ? cleanFloat($_POST['ws2_price']) : null;
+        $ws2Unit    = clean($_POST['ws2_unit'] ?? '') ?: null;
+        $ws3Price   = ($_POST['ws3_price'] ?? '') !== '' ? cleanFloat($_POST['ws3_price']) : null;
+        $ws3Unit    = clean($_POST['ws3_unit'] ?? '') ?: null;
         $retail     = cleanFloat($_POST['retail_price'] ?? 0);
         $minAlert   = cleanInt($_POST['min_stock_alert'] ?? 5);
+        $expiry     = clean($_POST['expiry_date'] ?? '') ?: null;
+        $vatStatus  = in_array($_POST['vat_status'] ?? '', ['INCL','EXCL'], true) ? $_POST['vat_status'] : null;
         $branchId   = cleanInt($_POST['branch_id'] ?? 0) ?: null;
         $initQty    = cleanInt($_POST['initial_qty'] ?? 0);
 
@@ -49,9 +61,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             $db->prepare(
-                'INSERT INTO products (sku,name,barcode,description,cost_price,wholesale_price,retail_price,min_stock_alert,created_by)
-                 VALUES (?,?,?,?,?,?,?,?,?)'
-            )->execute([$sku,$name,$barcode,$desc,$costPrice,$wholeSale,$retail,$minAlert,$u['id']]);
+                'INSERT INTO products (sku,name,barcode,description,category,unit,cost_price,wholesale_price,
+                        ws1_unit,ws2_price,ws2_unit,ws3_price,ws3_unit,retail_price,min_stock_alert,
+                        expiry_date,vat_status,created_by)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+            )->execute([$sku,$name,$barcode,$desc,$category,$unit,$costPrice,$wholeSale,
+                        $ws1Unit,$ws2Price,$ws2Unit,$ws3Price,$ws3Unit,$retail,$minAlert,
+                        $expiry,$vatStatus,$u['id']]);
             $productId = (int)$db->lastInsertId();
 
             if ($branchId && $initQty > 0) {
@@ -75,14 +91,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sku       = clean($_POST['sku'] ?? '');
         $barcode   = clean($_POST['barcode'] ?? '');
         $desc      = clean($_POST['description'] ?? '');
+        $category  = clean($_POST['category'] ?? '') ?: null;
+        $unit      = clean($_POST['unit'] ?? '') ?: null;
         $costPrice = cleanFloat($_POST['cost_price'] ?? 0);
         $wholeSale = cleanFloat($_POST['wholesale_price'] ?? 0);
+        $ws1Unit   = clean($_POST['ws1_unit'] ?? '') ?: null;
+        $ws2Price  = ($_POST['ws2_price'] ?? '') !== '' ? cleanFloat($_POST['ws2_price']) : null;
+        $ws2Unit   = clean($_POST['ws2_unit'] ?? '') ?: null;
+        $ws3Price  = ($_POST['ws3_price'] ?? '') !== '' ? cleanFloat($_POST['ws3_price']) : null;
+        $ws3Unit   = clean($_POST['ws3_unit'] ?? '') ?: null;
         $retail    = cleanFloat($_POST['retail_price'] ?? 0);
         $minAlert  = cleanInt($_POST['min_stock_alert'] ?? 5);
+        $expiry    = clean($_POST['expiry_date'] ?? '') ?: null;
+        $vatStatus = in_array($_POST['vat_status'] ?? '', ['INCL','EXCL'], true) ? $_POST['vat_status'] : null;
         $isActive  = isset($_POST['is_active']) ? 1 : 0;
 
-        $db->prepare('UPDATE products SET name=?,sku=?,barcode=?,description=?,cost_price=?,wholesale_price=?,retail_price=?,min_stock_alert=?,is_active=? WHERE id=?')
-            ->execute([$name,$sku,$barcode,$desc,$costPrice,$wholeSale,$retail,$minAlert,$isActive,$pid]);
+        $db->prepare(
+            'UPDATE products SET name=?,sku=?,barcode=?,description=?,category=?,unit=?,cost_price=?,wholesale_price=?,
+                    ws1_unit=?,ws2_price=?,ws2_unit=?,ws3_price=?,ws3_unit=?,retail_price=?,min_stock_alert=?,
+                    expiry_date=?,vat_status=?,is_active=? WHERE id=?'
+        )->execute([$name,$sku,$barcode,$desc,$category,$unit,$costPrice,$wholeSale,
+                    $ws1Unit,$ws2Price,$ws2Unit,$ws3Price,$ws3Unit,$retail,$minAlert,
+                    $expiry,$vatStatus,$isActive,$pid]);
         logActivity('product_updated', "Updated product: $name");
         flash('success', "Product '$name' updated.");
         header('Location: ' . url('stock')); exit;
@@ -200,6 +230,7 @@ $stockParams = [];
 if ($search) { $stockWhere[] = '(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)'; $stockParams = array_merge($stockParams, ["%$search%","%$search%","%$search%"]); }
 if ($filterBranch) { $stockWhere[] = 's.branch_id = ?'; $stockParams[] = $filterBranch; }
 if ($filterLow) { $stockWhere[] = 's.quantity <= p.min_stock_alert'; }
+if ($filterIssues) { $stockWhere[] = "((p.retail_price = 0 AND p.min_stock_alert > 999) OR p.name = 'PRODUCT' OR p.barcode = 'BARCODE')"; }
 
 $stockWhereStr = implode(' AND ', $stockWhere);
 
@@ -250,12 +281,16 @@ include __DIR__ . '/includes/tailwind.php';
           <input type="text" name="barcode" class="form-input" placeholder="Optional">
         </div>
         <div>
-          <label class="form-label">Cost Price (TSh)</label>
-          <input type="number" name="cost_price" class="form-input" value="0" min="0" step="0.01">
+          <label class="form-label">Category</label>
+          <input type="text" name="category" class="form-input" placeholder="Optional">
         </div>
         <div>
-          <label class="form-label">Wholesale Price (TSh)</label>
-          <input type="number" name="wholesale_price" class="form-input" value="0" min="0" step="0.01">
+          <label class="form-label">Unit</label>
+          <input type="text" name="unit" class="form-input" placeholder="e.g. PC, KG, L">
+        </div>
+        <div>
+          <label class="form-label">Cost Price (TSh)</label>
+          <input type="number" name="cost_price" class="form-input" value="0" min="0" step="0.01">
         </div>
         <div>
           <label class="form-label">Retail Price (TSh)</label>
@@ -264,6 +299,47 @@ include __DIR__ . '/includes/tailwind.php';
         <div>
           <label class="form-label">Min Stock Alert</label>
           <input type="number" name="min_stock_alert" class="form-input" value="5" min="0">
+        </div>
+        <div>
+          <label class="form-label">Expiry Date</label>
+          <input type="date" name="expiry_date" class="form-input">
+        </div>
+        <div class="sm:col-span-2 border-t pt-4 mt-1">
+          <h3 class="text-sm font-semibold text-gray-700 mb-3">Wholesale Pricing Tiers (Optional)</h3>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Tier 1 Price (TSh)</label>
+              <input type="number" name="wholesale_price" class="form-input" value="0" min="0" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">Tier 1 Unit</label>
+              <input type="text" name="ws1_unit" class="form-input" placeholder="Optional">
+            </div>
+            <div>
+              <label class="form-label">Tier 2 Price (TSh)</label>
+              <input type="number" name="ws2_price" class="form-input" min="0" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">Tier 2 Unit</label>
+              <input type="text" name="ws2_unit" class="form-input" placeholder="Optional">
+            </div>
+            <div>
+              <label class="form-label">Tier 3 Price (TSh)</label>
+              <input type="number" name="ws3_price" class="form-input" min="0" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">Tier 3 Unit</label>
+              <input type="text" name="ws3_unit" class="form-input" placeholder="Optional">
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">VAT Status</label>
+          <select name="vat_status" class="form-input">
+            <option value="">-- Not set --</option>
+            <option value="INCL">Inclusive</option>
+            <option value="EXCL">Exclusive</option>
+          </select>
         </div>
         <div class="sm:col-span-2">
           <label class="form-label">Description</label>
@@ -322,12 +398,16 @@ include __DIR__ . '/includes/tailwind.php';
           <input type="text" name="barcode" class="form-input" value="<?= e($editProduct['barcode']) ?>">
         </div>
         <div>
-          <label class="form-label">Cost Price (TSh)</label>
-          <input type="number" name="cost_price" class="form-input" value="<?= $editProduct['cost_price'] ?>" min="0" step="0.01">
+          <label class="form-label">Category</label>
+          <input type="text" name="category" class="form-input" value="<?= e($editProduct['category'] ?? '') ?>">
         </div>
         <div>
-          <label class="form-label">Wholesale Price (TSh)</label>
-          <input type="number" name="wholesale_price" class="form-input" value="<?= $editProduct['wholesale_price'] ?>" min="0" step="0.01">
+          <label class="form-label">Unit</label>
+          <input type="text" name="unit" class="form-input" value="<?= e($editProduct['unit'] ?? '') ?>" placeholder="e.g. PC, KG, L">
+        </div>
+        <div>
+          <label class="form-label">Cost Price (TSh)</label>
+          <input type="number" name="cost_price" class="form-input" value="<?= $editProduct['cost_price'] ?>" min="0" step="0.01">
         </div>
         <div>
           <label class="form-label">Retail Price (TSh)</label>
@@ -336,6 +416,47 @@ include __DIR__ . '/includes/tailwind.php';
         <div>
           <label class="form-label">Min Stock Alert</label>
           <input type="number" name="min_stock_alert" class="form-input" value="<?= $editProduct['min_stock_alert'] ?>" min="0">
+        </div>
+        <div>
+          <label class="form-label">Expiry Date</label>
+          <input type="date" name="expiry_date" class="form-input" value="<?= e($editProduct['expiry_date'] ?? '') ?>">
+        </div>
+        <div class="sm:col-span-2 border-t pt-4 mt-1">
+          <h3 class="text-sm font-semibold text-gray-700 mb-3">Wholesale Pricing Tiers</h3>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Tier 1 Price (TSh)</label>
+              <input type="number" name="wholesale_price" class="form-input" value="<?= $editProduct['wholesale_price'] ?>" min="0" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">Tier 1 Unit</label>
+              <input type="text" name="ws1_unit" class="form-input" value="<?= e($editProduct['ws1_unit'] ?? '') ?>">
+            </div>
+            <div>
+              <label class="form-label">Tier 2 Price (TSh)</label>
+              <input type="number" name="ws2_price" class="form-input" value="<?= e($editProduct['ws2_price'] ?? '') ?>" min="0" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">Tier 2 Unit</label>
+              <input type="text" name="ws2_unit" class="form-input" value="<?= e($editProduct['ws2_unit'] ?? '') ?>">
+            </div>
+            <div>
+              <label class="form-label">Tier 3 Price (TSh)</label>
+              <input type="number" name="ws3_price" class="form-input" value="<?= e($editProduct['ws3_price'] ?? '') ?>" min="0" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">Tier 3 Unit</label>
+              <input type="text" name="ws3_unit" class="form-input" value="<?= e($editProduct['ws3_unit'] ?? '') ?>">
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">VAT Status</label>
+          <select name="vat_status" class="form-input">
+            <option value="">-- Not set --</option>
+            <option value="INCL" <?= ($editProduct['vat_status'] ?? '') === 'INCL' ? 'selected' : '' ?>>Inclusive</option>
+            <option value="EXCL" <?= ($editProduct['vat_status'] ?? '') === 'EXCL' ? 'selected' : '' ?>>Exclusive</option>
+          </select>
         </div>
         <div class="sm:col-span-2">
           <label class="form-label">Description</label>
@@ -371,8 +492,12 @@ include __DIR__ . '/includes/tailwind.php';
       <input type="checkbox" name="filter" value="low" <?= $filterLow ? 'checked' : '' ?> onchange="this.form.submit()" class="w-3.5 h-3.5">
       Low stock only
     </label>
+    <label class="flex items-center gap-1.5 text-sm text-red-600 bg-white border border-red-200 rounded-lg px-3 cursor-pointer hover:bg-red-50" title="Products that look like they have swapped/misimported price fields">
+      <input type="checkbox" name="data_issues" value="1" <?= $filterIssues ? 'checked' : '' ?> onchange="this.form.submit()" class="w-3.5 h-3.5">
+      Data issues only
+    </label>
     <button type="submit" class="btn-secondary"><i class="fas fa-search"></i></button>
-    <?php if ($search || $filterBranch || $filterLow): ?><a href="<?= url('stock') ?>" class="btn-secondary"><i class="fas fa-times"></i></a><?php endif; ?>
+    <?php if ($search || $filterBranch || $filterLow || $filterIssues): ?><a href="<?= url('stock') ?>" class="btn-secondary"><i class="fas fa-times"></i></a><?php endif; ?>
   </form>
   <div class="flex gap-2">
     <button onclick="document.getElementById('addStockModal').classList.remove('hidden')" class="btn-secondary">
@@ -436,11 +561,15 @@ include __DIR__ . '/includes/tailwind.php';
         <?php endif; ?>
         <?php foreach ($stockItems as $item): ?>
         <?php $isLow = $item['quantity'] !== null && $item['quantity'] <= $item['min_stock_alert']; ?>
+        <?php $looksOff = (float)$item['retail_price'] === 0.0 && (int)$item['min_stock_alert'] > 999; ?>
         <tr class="hover:bg-gray-50 transition-colors <?= $isLow ? 'bg-red-50' : '' ?>">
           <td class="table-td"><input type="checkbox" name="ids[]" value="<?= $item['id'] ?>" form="bulkDeleteForm" data-row-check></td>
           <td class="table-td font-mono text-xs text-gray-500"><?= e($item['sku']) ?></td>
           <td class="table-td">
-            <div class="font-medium text-gray-800"><?= e($item['name']) ?></div>
+            <div class="font-medium text-gray-800">
+              <?= e($item['name']) ?>
+              <?php if ($looksOff): ?><span class="badge bg-red-100 text-red-600 ml-1" title="Retail price is 0 and min stock alert is unusually high — likely a swapped value from an import"><i class="fas fa-exclamation-circle"></i> check data</span><?php endif; ?>
+            </div>
             <?= $item['barcode'] ? '<div class="text-xs text-gray-400">' . e($item['barcode']) . '</div>' : '' ?>
           </td>
           <td class="table-td text-gray-500"><?= $item['branch_name'] ? e($item['branch_name']) : '<span class="text-gray-300">Not stocked</span>' ?></td>

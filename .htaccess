@@ -27,11 +27,6 @@ ServerSignature Off
     Deny from all
 </FilesMatch>
 
-<Files "install.php">
-    Order allow,deny
-    Deny from all
-</Files>
-
 <Files "router.php">
     Order allow,deny
     Deny from all

@@ -195,6 +195,10 @@
       <span class="icon-badge bg-yellow-400/15 text-yellow-400"><i class="fas fa-coins"></i></span>
       <span x-show="sidebarOpen" x-cloak class="truncate">Currency</span>
     </a>
+    <a href="<?= url('backup') ?>" class="nav-item <?= $cp==='backup.php'?'active':'' ?>">
+      <span class="icon-badge bg-cyan-400/15 text-cyan-400"><i class="fas fa-cloud-upload-alt"></i></span>
+      <span x-show="sidebarOpen" x-cloak class="truncate">Backup &amp; Export</span>
+    </a>
     <?php endif; ?>
 
   </nav>

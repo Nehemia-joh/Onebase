@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/currency_functions.php';
 require_once __DIR__ . '/includes/xlsx_reader.php';
+require_once __DIR__ . '/includes/product_columns.php';
 requireRole('super_admin', 'zone_manager', 'branch_manager', 'stock_controller');
 // Role directories are the canonical URLs — forward direct hits there
 if (!defined('ENTRY_OK') && isLoggedIn()) {
@@ -17,39 +18,6 @@ $u         = currentUser();
 
 $branchLocked = $u['branch_id'] && !isSuperAdmin() && !hasRole('zone_manager');
 $branches     = $db->query('SELECT id, name FROM branches WHERE is_active=1 ORDER BY name')->fetchAll();
-
-/**
- * Make sure the product columns the import writes to exist.
- * Adds them on the fly (same DDL as migration_v3.sql); returns
- * a list of columns it could not add.
- */
-function ensureImportColumns(PDO $db): array
-{
-    $need = [
-        'category'    => "VARCHAR(100) DEFAULT NULL AFTER `description`",
-        'unit'        => "VARCHAR(30) DEFAULT NULL AFTER `category`",
-        'ws1_unit'    => "VARCHAR(30) DEFAULT NULL AFTER `wholesale_price`",
-        'ws2_price'   => "DECIMAL(15,2) DEFAULT NULL AFTER `ws1_unit`",
-        'ws2_unit'    => "VARCHAR(30) DEFAULT NULL AFTER `ws2_price`",
-        'ws3_price'   => "DECIMAL(15,2) DEFAULT NULL AFTER `ws2_unit`",
-        'ws3_unit'    => "VARCHAR(30) DEFAULT NULL AFTER `ws3_price`",
-        'expiry_date' => "DATE DEFAULT NULL AFTER `min_stock_alert`",
-        'vat_status'  => "ENUM('INCL','EXCL') DEFAULT NULL AFTER `expiry_date`",
-    ];
-    $stmt = $db->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS
-                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products'");
-    $have = array_map('strtolower', $stmt->fetchAll(PDO::FETCH_COLUMN));
-    $failed = [];
-    foreach ($need as $col => $ddl) {
-        if (in_array(strtolower($col), $have, true)) continue;
-        try {
-            $db->exec("ALTER TABLE `products` ADD COLUMN `$col` $ddl");
-        } catch (PDOException) {
-            $failed[] = $col;
-        }
-    }
-    return $failed;
-}
 
 // Spreadsheet layout (0-indexed) — fixed column order per the source sheet
 const IMP_BARCODE = 0,  IMP_PRODUCT = 1,  IMP_SUPPLIER = 2, IMP_CATEGORY = 3,
@@ -84,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ' . url('stock_import')); exit;
     }
 
-    $missingCols = ensureImportColumns($db);
+    $missingCols = ensureProductColumns($db);
     if ($missingCols) {
         flash('error', 'Database is missing columns (' . implode(', ', $missingCols) . ') and they could not be added automatically — run migration_v3.sql in phpMyAdmin first.');
         header('Location: ' . url('stock_import')); exit;

@@ -5,8 +5,13 @@ declare(strict_types=1);
 (function () {
     $envFile = dirname(__DIR__) . '/.envmasterbusybase';
     if (!is_readable($envFile)) {
-        http_response_code(500);
-        die('Server configuration error. Missing .env file.');
+        $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
+        $bypass = ['install.php', 'cron_backup.php'];
+        if (PHP_SAPI === 'cli' || in_array($script, $bypass, true)) {
+            return; // let install.php run to create it, or let a CLI/cron script fail on its own terms
+        }
+        header('Location: /install.php');
+        exit;
     }
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         $line = trim($line);
