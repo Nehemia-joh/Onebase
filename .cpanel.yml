@@ -9,9 +9,11 @@ deployment:
     # .git/.cpanel.yml/router.php never get deployed by accident)
     - /bin/cp -f /home/nexabiec/repositories/Onebase/.htaccess $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/add_customer.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/backup.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/branches.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/check_stock.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/config.php $DEPLOYPATH
+    - /bin/cp -f /home/nexabiec/repositories/Onebase/cron_backup.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/currency_settings.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/customers.php $DEPLOYPATH
     - /bin/cp -f /home/nexabiec/repositories/Onebase/dashboard.php $DEPLOYPATH
