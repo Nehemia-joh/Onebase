@@ -213,6 +213,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         else                            flash('error', $blocked ? "Cannot delete: $blocked product(s) still have stock." : 'No products selected.');
         header('Location: ' . url('stock')); exit;
     }
+
+    // Full reset — deletes every product matching the CURRENT filter, and
+    // (unlike the delete actions above) also wipes any sales/purchase-order
+    // history that references them. Irreversible. super_admin only.
+    if ($act === 'delete_all_filtered') {
+        if (!isSuperAdmin() || ($_POST['confirm_text'] ?? '') !== 'DELETE ALL') {
+            flash('error', 'Reset not confirmed.');
+            header('Location: ' . url('stock')); exit;
+        }
+
+        $resetWhere  = ['p.is_active = 1'];
+        $resetParams = [];
+        $rSearch  = clean($_POST['q'] ?? '');
+        $rBranch  = cleanInt($_POST['branch_id'] ?? 0);
+        $rLow     = ($_POST['filter'] ?? '') === 'low';
+        $rIssues  = !empty($_POST['data_issues']);
+        if ($rSearch) { $resetWhere[] = '(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)'; array_push($resetParams, "%$rSearch%","%$rSearch%","%$rSearch%"); }
+        if ($rBranch) { $resetWhere[] = 's.branch_id = ?'; $resetParams[] = $rBranch; }
+        if ($rLow)    { $resetWhere[] = 's.quantity <= p.min_stock_alert'; }
+        if ($rIssues) { $resetWhere[] = "((p.retail_price = 0 AND p.min_stock_alert > 999) OR p.name = 'PRODUCT' OR p.barcode = 'BARCODE')"; }
+        $resetWhereStr = implode(' AND ', $resetWhere);
+
+        $findIds = $db->prepare(
+            "SELECT DISTINCT p.id FROM products p
+             LEFT JOIN stock s ON s.product_id = p.id" . ($rBranch ? " AND s.branch_id = $rBranch" : '') . "
+             WHERE $resetWhereStr"
+        );
+        $findIds->execute($resetParams);
+        $targetIds = $findIds->fetchAll(PDO::FETCH_COLUMN);
+
+        $productsDeleted = 0; $salesDeleted = 0; $posDeleted = 0;
+        $db->beginTransaction();
+        try {
+            foreach ($targetIds as $pid) {
+                $saleIdsStmt = $db->prepare('SELECT DISTINCT sale_id FROM sale_items WHERE product_id=?');
+                $saleIdsStmt->execute([$pid]);
+                $saleIds = $saleIdsStmt->fetchAll(PDO::FETCH_COLUMN);
+                $db->prepare('DELETE FROM sale_items WHERE product_id=?')->execute([$pid]);
+                foreach ($saleIds as $sid) {
+                    $remaining = $db->prepare('SELECT COUNT(*) FROM sale_items WHERE sale_id=?');
+                    $remaining->execute([$sid]);
+                    if ((int)$remaining->fetchColumn() === 0) {
+                        $db->prepare('DELETE FROM sales WHERE id=?')->execute([$sid]);
+                        $salesDeleted++;
+                    }
+                }
+
+                $poIdsStmt = $db->prepare('SELECT DISTINCT po_id FROM purchase_order_items WHERE product_id=?');
+                $poIdsStmt->execute([$pid]);
+                $poIds = $poIdsStmt->fetchAll(PDO::FETCH_COLUMN);
+                $db->prepare('DELETE FROM purchase_order_items WHERE product_id=?')->execute([$pid]);
+                foreach ($poIds as $poid) {
+                    $remaining = $db->prepare('SELECT COUNT(*) FROM purchase_order_items WHERE po_id=?');
+                    $remaining->execute([$poid]);
+                    if ((int)$remaining->fetchColumn() === 0) {
+                        $db->prepare('DELETE FROM purchase_orders WHERE id=?')->execute([$poid]);
+                        $posDeleted++;
+                    }
+                }
+
+                $db->prepare('DELETE FROM products WHERE id=?')->execute([$pid]);
+                $productsDeleted++;
+            }
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollBack();
+            flash('error', 'Reset failed and was rolled back: ' . $e->getMessage());
+            header('Location: ' . url('stock')); exit;
+        }
+
+        logActivity('products_reset', "Full reset: deleted $productsDeleted product(s), $salesDeleted sale(s), $posDeleted purchase order(s)");
+        flash('success', "Reset complete: $productsDeleted product(s) deleted (including $salesDeleted sale(s) and $posDeleted purchase order(s) that referenced them).");
+        header('Location: ' . url('stock')); exit;
+    }
 }
 
 // ── Edit product ──────────────────────────────────────────────────────────────
@@ -249,6 +323,7 @@ $stockList = $db->prepare(
 );
 $stockList->execute($stockParams);
 $stockItems = $stockList->fetchAll();
+$totalProducts = count(array_unique(array_column($stockItems, 'id')));
 
 // Products for modals
 $allProducts = $db->query('SELECT id, sku, name FROM products WHERE is_active=1 ORDER BY name')->fetchAll();
@@ -505,13 +580,42 @@ include __DIR__ . '/includes/tailwind.php';
     </button>
     <a href="<?= url('stock_import') ?>" class="btn-secondary"><i class="fas fa-file-import"></i> Import Excel</a>
     <a href="<?= url('stock') ?>?action=new" class="btn-primary"><i class="fas fa-plus"></i> New Product</a>
+    <?php if (isSuperAdmin()): ?>
+    <button type="button" onclick="document.getElementById('resetAllModal').classList.remove('hidden')" class="btn-danger" title="Permanently delete every product matching the current search/filter, plus any sales or purchase orders that reference them">
+      <i class="fas fa-radiation"></i> Delete All (Filtered)
+    </button>
+    <?php endif; ?>
   </div>
 </div>
+
+<?php if (isSuperAdmin()): ?>
+<!-- Full reset modal -->
+<div id="resetAllModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+    <h3 class="font-bold text-red-600 mb-2"><i class="fas fa-exclamation-triangle"></i> Permanently delete <?= $totalProducts ?> product(s)?</h3>
+    <p class="text-sm text-gray-600 mb-1">This deletes every product currently matching your search/filter above — plus, unlike the normal delete, it also permanently deletes any sales and purchase orders that reference them (and those alone, if that empties them).</p>
+    <p class="text-sm font-semibold text-red-600 mb-4">This cannot be undone.</p>
+    <form method="POST" onsubmit="return document.getElementById('resetConfirmText').value === 'DELETE ALL'">
+      <?= csrf_field() ?>
+      <input type="hidden" name="_act" value="delete_all_filtered">
+      <input type="hidden" name="q" value="<?= e($search) ?>">
+      <input type="hidden" name="branch_id" value="<?= e((string)$filterBranch) ?>">
+      <input type="hidden" name="filter" value="<?= $filterLow ? 'low' : '' ?>">
+      <input type="hidden" name="data_issues" value="<?= $filterIssues ? '1' : '' ?>">
+      <label class="form-label">Type <strong>DELETE ALL</strong> to confirm</label>
+      <input type="text" id="resetConfirmText" name="confirm_text" class="form-input mb-4" autocomplete="off">
+      <div class="flex gap-3">
+        <button type="submit" class="btn-danger"><i class="fas fa-radiation"></i> Yes, delete everything</button>
+        <button type="button" onclick="document.getElementById('resetAllModal').classList.add('hidden')" class="btn-secondary">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- Stats bar -->
 <div class="grid grid-cols-3 gap-3 mb-5">
   <?php
-  $totalProducts = count(array_unique(array_column($stockItems, 'id')));
   $lowItems  = count(array_filter($stockItems, fn($i) => $i['quantity'] !== null && $i['quantity'] <= $i['min_stock_alert']));
   $totalValue = array_sum(array_map(fn($i) => ($i['quantity'] ?? 0) * $i['effective_cost'], $stockItems));
   ?>
